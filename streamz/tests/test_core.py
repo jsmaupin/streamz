@@ -23,6 +23,14 @@ from streamz.utils_test import (inc, double, gen_test, tmpfile, captured_logger,
 from distributed.utils_test import loop   # noqa: F401
 
 
+class sink_metadata(Stream):
+    def __init__(self, upstream, L):
+        Stream.__init__(self, upstream)
+        self.L = L
+
+    def update(self, x, who=None, metadata=None):
+        self.L.extend(metadata)
+
 def test_basic():
     source = Stream()
     b1 = source.map(inc)
@@ -199,6 +207,21 @@ def test_sliding_window_ref_counts():
         r_prev = r
 
 
+def test_sliding_window_metadata():
+    source = Stream()
+    window = source.sliding_window(2)
+
+    L = []
+    sink = sink_metadata(window, L)
+    window.connect(sink)
+
+    source.emit(0)
+    source.emit(1, metadata=[{'v': 1}])
+    source.emit(2, metadata=[{'v': 2}])
+    source.emit(3, metadata=[{'v': 3}])
+    assert L == [{'v': 1}, {'v': 1}, {'v': 2}, {'v': 2}, {'v': 3}]
+
+
 @gen_test()
 def test_backpressure():
     q = Queue(maxsize=2)
@@ -258,6 +281,23 @@ def test_timed_window_ref_counts():
     source.emit(2, metadata=[{'ref': ref2}])
     assert ref1.count == 0
     assert ref2.count == 1
+
+
+@gen_test()
+def test_timed_window_metadata():
+    L = []
+    source = Stream()
+    window = source.timed_window(0.01)
+    sink = sink_metadata(window, L)
+    window.connect(sink)
+
+    source.emit(0)
+    source.emit(1, metadata=[{'v': 1}])
+    source.emit(2, metadata=[{'v': 2}])
+    source.emit(3, metadata=[{'v': 3}])
+    yield gen.sleep(0.05)
+
+    assert L == [{'v': 1}, {'v': 1}, {'v': 2}, {'v': 2}, {'v': 3}]
 
 
 def test_timed_window_timedelta(clean):  # noqa: F811
